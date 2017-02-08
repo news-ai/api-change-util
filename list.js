@@ -19,7 +19,7 @@ var topicName = 'process-new-list-upload';
 var subscriptionName = 'node-new-list-upload';
 var pubsub = gcloud.pubsub();
 
-var contactIdTopicName = 'datastore-sync-contacts-functions';
+var contactIdTopicName = 'process-new-contact-upload';
 
 // Instantiate a sentry client
 var sentryClient = new raven.Client('https://0366ffd1a51a4fc4881b7e7bfca378d6:6191273b778d4033a7f16d8c0f020366@sentry.io/137174');
@@ -36,10 +36,8 @@ function getTopic(currentTopicName, cb) {
     });
 }
 
-function addContactIdToPubSub(contactIds) {
+function addContactIdToPubSubTopicPublish(contactIds) {
     var deferred = Q.defer();
-
-    console.log(contactIds);
 
     getTopic(contactIdTopicName, function(err, topic) {
         if (err) {
@@ -65,6 +63,23 @@ function addContactIdToPubSub(contactIds) {
     });
 
     return deferred.promise;
+}
+
+function addContactIdToPubSub(contactIds) {
+    var allPromises = [];
+
+    var i, j, temparray, chunk = 75;
+    for (i = 0, j = contactIds.length; i < j; i += chunk) {
+        // Break array into a chunk
+        temparray = contactIds.slice(i, i + chunk);
+        console.log(temparray.length);
+
+        // Execute contact sync
+        var toExecute = addContactIdToPubSubTopicPublish(temparray);
+        allPromises.push(toExecute);
+    }
+
+    return Q.all(allPromises);
 }
 
 // Process a particular Twitter user
