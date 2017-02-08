@@ -68,12 +68,13 @@ function addContactIdToPubSubTopicPublish(contactIds) {
 
 function addContactIdToPubSub(contactIds) {
     var allPromises = [];
+    var contactIdsArray = contactIds.split(",");
+
 
     var i, j, temparray, chunk = 75;
-    for (i = 0, j = contactIds.length; i < j; i += chunk) {
+    for (i = 0, j = contactIdsArray.length; i < j; i += chunk) {
         // Break array into a chunk
-        temparray = contactIds.slice(i, i + chunk);
-        console.log(temparray.length);
+        temparray = contactIdsArray.slice(i, i + chunk);
 
         // Execute contact sync
         var toExecute = addContactIdToPubSubTopicPublish(temparray);

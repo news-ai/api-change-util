@@ -52,8 +52,6 @@ function getKeysFromRequestData(requestData, resouceType) {
         keys.push(datastoreId);
     }
 
-    console.log(keys);
-
     return keys;
 }
 
