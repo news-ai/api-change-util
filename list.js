@@ -71,13 +71,14 @@ function addContactIdToPubSub(contactIds) {
     var contactIdsArray = contactIds.split(",");
 
 
-    var i, j, temparray, chunk = 75;
+    var i, j, tempArray, chunk = 75;
     for (i = 0, j = contactIdsArray.length; i < j; i += chunk) {
         // Break array into a chunk
-        temparray = contactIdsArray.slice(i, i + chunk);
+        tempArray = contactIdsArray.slice(i, i + chunk);
+        var tempString = tempArray.join(',');
 
         // Execute contact sync
-        var toExecute = addContactIdToPubSubTopicPublish(temparray);
+        var toExecute = addContactIdToPubSubTopicPublish(tempString);
         allPromises.push(toExecute);
     }
 
