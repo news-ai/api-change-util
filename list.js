@@ -3,6 +3,7 @@
 var elasticsearch = require('elasticsearch');
 var raven = require('raven');
 var Q = require('q');
+var rp = require('request-promise');
 var gcloud = require('google-cloud')({
     projectId: 'newsai-1166'
 });
