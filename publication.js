@@ -274,7 +274,7 @@ subscribe(function(err, message) {
     console.log('Received request to process contacts: ' + message.data.Id.length);
     syncPublication(message.data)
         .then(function(status) {
-            rp('')
+            rp('https://hchk.io/d21861d2-0a03-4d2b-b96f-f5d77ecd0e6d')
                 .then(function(htmlString) {
                     console.log('Completed execution for ' + message.data.Id.length);
                 })
