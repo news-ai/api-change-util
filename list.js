@@ -21,7 +21,7 @@ var subscriptionName = 'node-new-list-upload';
 var pubsub = gcloud.pubsub();
 
 var contactIdTopicName = 'process-new-contact-upload';
-var contactIdTopicName = 'process-new-publication-upload';
+var publicationIdTopicName = 'process-new-publication-upload';
 
 // Instantiate a sentry client
 var sentryClient = new raven.Client('https://0366ffd1a51a4fc4881b7e7bfca378d6:6191273b778d4033a7f16d8c0f020366@sentry.io/137174');
@@ -67,10 +67,38 @@ function addContactIdToPubSubTopicPublish(contactIds) {
     return deferred.promise;
 }
 
+function addPublicationIdToPubSubTopicPublish(publicationIds) {
+    var deferred = Q.defer();
+
+    getTopic(publicationIdTopicName, function(err, topic) {
+        if (err) {
+            deferred.reject(new Error(err));
+            console.error('Error occurred while getting pubsub topic', err);
+            sentryClient.captureMessage(err);
+        } else {
+            topic.publish({
+                data: {
+                    Id: publicationIds,
+                    Method: 'create'
+                }
+            }, function(err) {
+                if (err) {
+                    deferred.reject(new Error(err));
+                    console.error('Error occurred while queuing background task', err);
+                    sentryClient.captureMessage(err);
+                } else {
+                    deferred.resolve(true);
+                }
+            });
+        }
+    });
+
+    return deferred.promise;
+}
+
 function addContactIdToPubSub(contactIds) {
     var allPromises = [];
     var contactIdsArray = contactIds.split(",");
-
 
     var i, j, tempArray, chunk = 75;
     for (i = 0, j = contactIdsArray.length; i < j; i += chunk) {
@@ -86,12 +114,35 @@ function addContactIdToPubSub(contactIds) {
     return Q.all(allPromises);
 }
 
+function addPublicationIdToPubSub(publicationIds) {
+    var allPromises = [];
+    var publicationIdsArray = publicationIds.split(",");
+
+    var i, j, tempArray, chunk = 75;
+    for (i = 0, j = publicationIdsArray.length; i < j; i += chunk) {
+        // Break array into a chunk
+        tempArray = publicationIdsArray.slice(i, i + chunk);
+        var tempString = tempArray.join(',');
+
+        // Execute contact sync
+        var toExecute = addPublicationIdToPubSubTopicPublish(tempString);
+        allPromises.push(toExecute);
+    }
+
+    return Q.all(allPromises);
+}
+
 // Process a particular Twitter user
 function processListUpload(data) {
     var deferred = Q.defer();
 
-    addContactIdToPubSub(data.ContactId).then(function(status) {
-        deferred.resolve(status);
+    addContactIdToPubSub(data.ContactId).then(function(contactStatus) {
+        addPublicationIdToPubSub(data.PublicationId).then(function(publicationStatus) {
+            deferred.resolve(publicationStatus);
+        }, function(error) {
+            console.error(error);
+            sentryClient.captureMessage(error);
+        });
     }, function(error) {
         console.error(error);
         sentryClient.captureMessage(error);
