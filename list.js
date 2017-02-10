@@ -21,6 +21,7 @@ var subscriptionName = 'node-new-list-upload';
 var pubsub = gcloud.pubsub();
 
 var contactIdTopicName = 'process-new-contact-upload';
+var contactIdTopicName = 'process-new-publication-upload';
 
 // Instantiate a sentry client
 var sentryClient = new raven.Client('https://0366ffd1a51a4fc4881b7e7bfca378d6:6191273b778d4033a7f16d8c0f020366@sentry.io/137174');

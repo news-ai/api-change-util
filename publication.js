@@ -14,8 +14,8 @@ var datastore = require('@google-cloud/datastore')({
 });
 
 // Initialize Google Cloud
-var topicName = 'process-new-contact-upload';
-var subscriptionName = 'node-new-contact-upload';
+var topicName = 'process-new-publication-upload';
+var subscriptionName = 'node-new-publication-upload';
 var pubsub = gcloud.pubsub();
 
 // Instantiate a elasticsearch client
@@ -26,7 +26,7 @@ var client = new elasticsearch.Client({
 });
 
 // Instantiate a sentry client
-var sentryClient = new raven.Client('https://f4ab035568994293b9a2a90727ccb5fc:a6dc87433f284952b2b5d629422ef7e6@sentry.io/103134');
+var sentryClient = new raven.Client('https://c2b3c727812f4643b73f40bee09e5108:fed6658dfeb94757b53cb062e81cdc68@sentry.io/103136');
 sentryClient.patchGlobal();
 
 /**
@@ -36,20 +36,18 @@ sentryClient.patchGlobal();
  * @param {string} requestData.Id Datastore ID string.
  * @returns {Object} Datastore key object.
  */
-function getKeysFromRequestData(requestData, resouceType) {
+function getKeyFromRequestData(requestData) {
     if (!requestData.Id) {
-        throw new Error("Id not provided. Make sure you have a 'Id' property " +
-            "in your request");
+        throw new Error('Id not provided. Make sure you have a "Id" property ' +
+            'in your request');
     }
 
     var ids = requestData.Id.split(',');
     var keys = [];
 
-    console.log(ids);
-
     for (var i = ids.length - 1; i >= 0; i--) {
-        var contactId = parseInt(ids[i], 10);
-        var datastoreId = datastore.key([resouceType, contactId]);
+        var publicationId = parseInt(ids[i], 10);
+        var datastoreId = datastore.key(['Publication', publicationId]);
         keys.push(datastoreId);
     }
 
@@ -60,37 +58,37 @@ function getKeysFromRequestData(requestData, resouceType) {
  * Retrieves a record.
  *
  * @example
- * gcloud alpha functions call ds-get --data '{'kind':'gcf-test','key':'foobar'}'
+ * gcloud alpha functions call ds-get --data '{"kind":"gcf-test","key":"foobar"}'
  *
  * @param {Object} context Cloud Function context.
  * @param {Function} context.success Success callback.
  * @param {Function} context.failure Failure callback.
  * @param {Object} data Request data, in this case an object provided by the user.
- * @param {string} data.kind The Datastore kind of the data to retrieve, e.g. 'user'.
+ * @param {string} data.kind The Datastore kind of the data to retrieve, e.g. "user".
  * @param {string} data.key Key at which to retrieve the data, e.g. 5075192766267392.
  */
-function getDatastore(data, resouceType) {
+function getDatastore(data) {
     var deferred = Q.defer();
     try {
-        var keys = getKeysFromRequestData(data, resouceType);
+        var key = getKeyFromRequestData(data);
 
-        datastore.get(keys, function(err, entities) {
+        datastore.get(key, function(err, entity) {
             if (err) {
                 console.error(err);
                 sentryClient.captureMessage(err);
                 deferred.reject(new Error(err));
             }
 
-            // The get operation will not fail for a non-existent entities, it just
+            // The get operation will not fail for a non-existent entity, it just
             // returns null.
-            if (!entities) {
+            if (!entity) {
                 var error = 'Entity does not exist';
                 console.error(error);
                 sentryClient.captureMessage(error);
                 deferred.reject(new Error(error));
             }
 
-            deferred.resolve(entities);
+            deferred.resolve(entity);
         });
 
     } catch (err) {
@@ -103,54 +101,39 @@ function getDatastore(data, resouceType) {
 }
 
 /**
- * Format a contact for ES sync
+ * Format a publication for ES sync
  *
- * @param {Object} contactData Contact details from datastore.
+ * @param {Object} publicationData Publication details from datastore.
  */
-function formatESContact(contactId, contactData) {
-    contactData['Id'] = contactId;
-
-    if ('CustomFields.Name' in contactData && 'CustomFields.Value' in contactData) {
-        // Populate a column for contactData
-        contactData['CustomFields'] = [];
-        for (var i = contactData['CustomFields.Name'].length - 1; i >= 0; i--) {
-            var singleData = {};
-            singleData.Name = contactData['CustomFields.Name'][i];
-            singleData.Value = contactData['CustomFields.Value'][i];
-            contactData['CustomFields'].push(singleData);
-        }
-
-        // Remove the name and value fields
-        delete contactData['CustomFields.Name'];
-        delete contactData['CustomFields.Value'];
-    }
-
-    return contactData;
+function formatESPublication(publicationId, publicationData) {
+    publicationData['Id'] = publicationId;
+    return publicationData;
 }
 
 /**
- * Add a contact to ES
+ * Add a publication to ES
  *
- * @param {Object} contactData Contact details from datastore.
+ * @param {Object} publicationData Publication details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(contacts) {
+function addToElastic(publications) {
     var deferred = Q.defer();
     var esActions = [];
 
-    for (var i = contacts.length - 1; i >= 0; i--) {
-        var contactId = contacts[i].key.id;
-        var contactData = contacts[i].data;
-        var postContactData = formatESContact(contactId, contactData);
+    for (var i = 0; i < publications.length; i++) {
+        var publicationId = publications[i].key.id;
+        var publicationData = publications[i].data;
+        
+        var postPublicationData = formatESPublication(publicationId, publicationData);
 
         var indexRecord = {
             index: {
-                _index: 'contacts',
-                _type: 'contact',
-                _id: contactId
+                _index: 'publications',
+                _type: 'publication',
+                _id: publicationId
             }
         };
-        var dataRecord = postContactData;
+        var dataRecord = postPublicationData;
         esActions.push(indexRecord);
         esActions.push({
             data: dataRecord
@@ -171,14 +154,14 @@ function addToElastic(contacts) {
 }
 
 /**
- * Syncs a contact information to elasticsearch.
+ * Syncs a publication information to elasticsearch.
  *
- * @param {Object} contact Contact details from datastore.
+ * @param {Object} publication Publication details from datastore.
  */
-function getAndSyncElastic(contacts) {
+function getAndSyncElastic(publications) {
     var deferred = Q.defer();
 
-    addToElastic(contacts).then(function(status) {
+    addToElastic(publications).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -189,85 +172,35 @@ function getAndSyncElastic(contacts) {
     return deferred.promise;
 }
 
-function removeContactFromElastic(contactId) {
+function syncPublication(data) {
     var deferred = Q.defer();
 
-    var esActions = [];
-    var eachRecord = {
-        delete: {
-            _index: 'contacts',
-            _type: 'contact',
-            _id: contactId
-        }
-    };
-    esActions.push(eachRecord);
-
-    client.bulk({
-        body: esActions
-    }, function(error, response) {
-        if (error) {
-            deferred.resolve(false);
+    getDatastore(data).then(function(publication) {
+        if (publication != null) {
+            getAndSyncElastic(publication).then(function(elasticResponse) {
+                if (elasticResponse) {
+                    deferred.resolve(true);
+                } else {
+                    var error = 'Elastic sync failed';
+                    sentryClient.captureMessage(error);
+                    deferred.reject(new Error(error));
+                    throw new Error(error);
+                }
+            });
         } else {
-            deferred.resolve(true);
-        }
-    });
-
-    return deferred.promise;
-}
-
-function syncContact(data) {
-    var deferred = Q.defer();
-    if (data.Method && data.Method.toLowerCase() === 'create') {
-        getDatastore(data, 'Contact').then(function(contacts) {
-            if (contacts != null) {
-                getAndSyncElastic(contacts).then(function(elasticResponse) {
-                    if (elasticResponse) {
-                        deferred.resolve('Success!');
-                    } else {
-                        var error = 'Elastic sync failed';
-                        sentryClient.captureMessage(error);
-                        deferred.reject(new Error(error));
-                        throw new Error(error);
-                    }
-                });
-            } else {
-                var error = 'Contact not found';
-                sentryClient.captureMessage(error);
-                deferred.reject(new Error(error));
-                throw new Error(error);
-            }
-        }, function(error) {
+            var error = 'Elastic sync failed';
             sentryClient.captureMessage(error);
             deferred.reject(new Error(error));
             throw new Error(error);
-        });
-    } else if (data.Method && data.Method.toLowerCase() === 'delete') {
-        if (!data.Id) {
-            throw new Error("Id not provided. Make sure you have a 'Id' property " +
-                "in your request");
         }
-
-        var contactId = parseInt(data.Id, 10);
-        removeContactFromElastic(contactId).then(function(elasticResponse) {
-            if (elasticResponse) {
-                deferred.resolve('Success!');
-            } else {
-                var error = 'Elastic removal failed for ' + data.Id;
-                sentryClient.captureMessage(error);
-                deferred.reject(new Error(error));
-                throw new Error(error);
-            }
-        });
-    } else {
-        // This case should never happen unless wrong pub/sub method is called.
-        var error = 'Can not parse method ' + data.Method;
+    }, function(error) {
         sentryClient.captureMessage(error);
         deferred.reject(new Error(error));
         throw new Error(error);
-    }
+    });
 
     return deferred.promise;
-}
+};
 
 // Get a Google Cloud topic
 function getTopic(currentTopicName, cb) {
@@ -339,9 +272,9 @@ subscribe(function(err, message) {
         throw err;
     }
     console.log('Received request to process contacts: ' + message.data.Id.length);
-    syncContact(message.data)
+    syncPublication(message.data)
         .then(function(status) {
-            rp('https://hchk.io/d01a4dde-670b-4083-b749-e1bc1079d616')
+            rp('')
                 .then(function(htmlString) {
                     console.log('Completed execution for ' + message.data.Id.length);
                 })
@@ -363,12 +296,12 @@ subscribe(function(err, message) {
  * @param {Object} data Request data, in this case an object provided by the Pub/Sub trigger.
  * @param {Object} data.message Message that was published via Pub/Sub.
  */
-exports.syncContacts = function syncContacts(data) {
-    return syncContact(data);
+exports.syncPublications = function syncPublications(data) {
+    return syncPublication(data);
 };
 
 function testSync(data) {
-    return syncContact(data);
+    return syncPublication(data);
 };
 
-// testSync({Id: '6095325244686336', Method: 'create'})
+// testSync({Id: '5852755692355584,5660158352949248', Method: 'create'})
