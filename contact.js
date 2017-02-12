@@ -14,6 +14,7 @@ var datastore = require('@google-cloud/datastore')({
 });
 
 // Initialize Google Cloud
+var enhanceTopicName = 'process-enhance';
 var topicName = 'process-new-contact-upload';
 var subscriptionName = 'node-new-contact-upload';
 var pubsub = gcloud.pubsub();
@@ -28,6 +29,62 @@ var client = new elasticsearch.Client({
 // Instantiate a sentry client
 var sentryClient = new raven.Client('https://f4ab035568994293b9a2a90727ccb5fc:a6dc87433f284952b2b5d629422ef7e6@sentry.io/103134');
 sentryClient.patchGlobal();
+
+// Get a Google Cloud topic
+function getTopic(currentTopicName, cb) {
+    pubsub.createTopic(currentTopicName, function(err, topic) {
+        // topic already exists.
+        if (err && err.code === 409) {
+            return cb(null, pubsub.topic(currentTopicName));
+        }
+        return cb(err, topic);
+    });
+}
+
+function addContactEmailsToPubSubTopicPublish(contactEmails) {
+    var deferred = Q.defer();
+
+    getTopic(enhanceTopicName, function(err, topic) {
+        if (err) {
+            deferred.reject(new Error(err));
+            console.error('Error occurred while getting pubsub topic', err);
+            sentryClient.captureMessage(err);
+        } else {
+            topic.publish({
+                data: {
+                    email: contactEmails
+                }
+            }, function(err) {
+                if (err) {
+                    deferred.reject(new Error(err));
+                    console.error('Error occurred while queuing background task', err);
+                    sentryClient.captureMessage(err);
+                } else {
+                    deferred.resolve(true);
+                }
+            });
+        }
+    });
+
+    return deferred.promise;
+}
+
+function addContactEmailToPubSub(contactEmails) {
+    var allPromises = [];
+
+    var i, j, tempArray, chunk = 75;
+    for (i = 0, j = contactEmails.length; i < j; i += chunk) {
+        // Break array into a chunk
+        tempArray = contactEmails.slice(i, i + chunk);
+        var tempString = tempArray.join(',');
+
+        // Execute contact sync
+        var toExecute = addContactEmailsToPubSubTopicPublish(tempString);
+        allPromises.push(toExecute);
+    }
+
+    return Q.all(allPromises);
+}
 
 /**
  * Gets a Datastore key from the kind/key pair in the request.
@@ -180,7 +237,18 @@ function getAndSyncElastic(contacts) {
 
     addToElastic(contacts).then(function(status) {
         if (status) {
-            deferred.resolve(true);
+            var contactEmails = [];
+
+            for (var i = 0; i < contacts.length; i++) {
+                contactEmails.push(contacts[i].data.Email)
+            }
+
+            addContactEmailToPubSub(contactEmails).then(function(status) {
+                deferred.resolve(true);
+            }, function (error) {
+                sentryClient.captureMessage(error);
+                deferred.reject(false);
+            });
         } else {
             deferred.resolve(false);
         }
