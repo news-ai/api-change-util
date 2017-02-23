@@ -24,8 +24,8 @@ var sentryClient = new raven.Client('https://f4ab035568994293b9a2a90727ccb5fc:a6
 sentryClient.patchGlobal();
 
 // Initialize Google Cloud
-var topicName = 'process-list-change';
-var subscriptionName = 'node-list-change';
+var topicName = 'process-contact-change';
+var subscriptionName = 'node-contact-change';
 var pubsub = gcloud.pubsub();
 
 // Get a Google Cloud topic
@@ -56,8 +56,8 @@ function getKeysFromRequestData(requestData, resouceType) {
     var keys = [];
 
     for (var i = ids.length - 1; i >= 0; i--) {
-        var listId = parseInt(ids[i], 10);
-        var datastoreId = datastore.key([resouceType, listId]);
+        var contactId = parseInt(ids[i], 10);
+        var datastoreId = datastore.key([resouceType, contactId]);
         keys.push(datastoreId);
     }
 
@@ -111,49 +111,54 @@ function getDatastore(data, resouceType) {
 }
 
 /**
- * Format a list for ES sync
+ * Format a contact for ES sync
  *
- * @param {Object} listData List details from datastore.
+ * @param {Object} contactData Contact details from datastore.
  */
-function formatESList(listId, listData) {
-    listData['Id'] = listId;
+function formatESContact(contactId, contactData) {
+    contactData['Id'] = contactId;
 
-    delete listData['FieldsMap.Value']
-    delete listData['Contacts']
-    delete listData['FieldsMap.Name']
-    delete listData['FieldsMap.CustomField']
-    delete listData['FieldsMap.Hidden']
-    delete listData['fieldsmap.Value']
-    delete listData['fieldsmap.Name']
-    delete listData['fieldsmap.CustomField']
-    delete listData['fieldsmap.Hidden']
+    if ('CustomFields.Name' in contactData && 'CustomFields.Value' in contactData) {
+        // Populate a column for contactData
+        contactData['CustomFields'] = [];
+        for (var i = contactData['CustomFields.Name'].length - 1; i >= 0; i--) {
+            var singleData = {};
+            singleData.Name = contactData['CustomFields.Name'][i];
+            singleData.Value = contactData['CustomFields.Value'][i];
+            contactData['CustomFields'].push(singleData);
+        }
 
-    return listData;
+        // Remove the name and value fields
+        delete contactData['CustomFields.Name'];
+        delete contactData['CustomFields.Value'];
+    }
+
+    return contactData;
 }
 
 /**
- * Add a list to ES
+ * Add a contact to ES
  *
- * @param {Object} listData List details from datastore.
+ * @param {Object} contactData Contact details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(lists) {
+function addToElastic(contacts) {
     var deferred = Q.defer();
     var esActions = [];
 
-    for (var i = lists.length - 1; i >= 0; i--) {
-        var listId = lists[i].key.id;
-        var listData = lists[i].data;
-        var postListData = formatESList(listId, listData);
+    for (var i = contacts.length - 1; i >= 0; i--) {
+        var contactId = contacts[i].key.id;
+        var contactData = contacts[i].data;
+        var postContactData = formatESContact(contactId, contactData);
 
         var indexRecord = {
             index: {
-                _index: 'lists',
-                _type: 'list',
-                _id: listId
+                _index: 'contacts',
+                _type: 'contact',
+                _id: contactId
             }
         };
-        var dataRecord = postListData;
+        var dataRecord = postContactData;
         esActions.push(indexRecord);
         esActions.push({
             data: dataRecord
@@ -174,14 +179,14 @@ function addToElastic(lists) {
 }
 
 /**
- * Syncs a list information to elasticsearch.
+ * Syncs a contact information to elasticsearch.
  *
- * @param {Object} Get list details from datastore.
+ * @param {Object} contact Contact details from datastore.
  */
-function getAndSyncElastic(lists) {
+function getAndSyncElastic(contacts) {
     var deferred = Q.defer();
 
-    addToElastic(lists).then(function(status) {
+    addToElastic(contacts).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -192,12 +197,38 @@ function getAndSyncElastic(lists) {
     return deferred.promise;
 }
 
-function syncList(data) {
+function removeContactFromElastic(contactId) {
+    var deferred = Q.defer();
+
+    var esActions = [];
+    var eachRecord = {
+        delete: {
+            _index: 'contacts',
+            _type: 'contact',
+            _id: contactId
+        }
+    };
+    esActions.push(eachRecord);
+
+    client.bulk({
+        body: esActions
+    }, function(error, response) {
+        if (error) {
+            deferred.resolve(false);
+        } else {
+            deferred.resolve(true);
+        }
+    });
+
+    return deferred.promise;
+}
+
+function syncContact(data) {
     var deferred = Q.defer();
     if (data.Method && data.Method.toLowerCase() === 'create') {
-        getDatastore(data, 'MediaList').then(function(lists) {
-            if (lists != null) {
-                getAndSyncElastic(lists).then(function(elasticResponse) {
+        getDatastore(data, 'Contact').then(function(contacts) {
+            if (contacts != null) {
+                getAndSyncElastic(contacts).then(function(elasticResponse) {
                     if (elasticResponse) {
                         deferred.resolve('Success!');
                     } else {
@@ -208,7 +239,7 @@ function syncList(data) {
                     }
                 });
             } else {
-                var error = 'List not found';
+                var error = 'Contact not found';
                 sentryClient.captureMessage(error);
                 deferred.reject(new Error(error));
                 throw new Error(error);
@@ -217,6 +248,23 @@ function syncList(data) {
             sentryClient.captureMessage(error);
             deferred.reject(new Error(error));
             throw new Error(error);
+        });
+    } else if (data.Method && data.Method.toLowerCase() === 'delete') {
+        if (!data.Id) {
+            throw new Error("Id not provided. Make sure you have a 'Id' property " +
+                "in your request");
+        }
+
+        var contactId = parseInt(data.Id, 10);
+        removeContactFromElastic(contactId).then(function(elasticResponse) {
+            if (elasticResponse) {
+                deferred.resolve('Success!');
+            } else {
+                var error = 'Elastic removal failed for ' + data.Id;
+                sentryClient.captureMessage(error);
+                deferred.reject(new Error(error));
+                throw new Error(error);
+            }
         });
     } else {
         // This case should never happen unless wrong pub/sub method is called.
@@ -287,9 +335,9 @@ subscribe(function(err, message) {
         throw err;
     }
     console.log('Received request to process list process ' + message.data.Id);
-    syncList(message.data)
+    syncContact(message.data)
         .then(function(status) {
-            rp('https://hchk.io/817c04d9-2042-4de8-ae3b-f24207df3dac')
+            rp('https://hchk.io/f0add847-7c16-4753-994c-2943676303cb')
                 .then(function(htmlString) {
                     console.log('Completed execution for ' + message.data.Id);
                 })
@@ -302,4 +350,4 @@ subscribe(function(err, message) {
         });
 });
 
-// testSync({Id: '5097453078446080', Method: 'create'})
+// testSync({Id: '6095325244686336', Method: 'create'})
