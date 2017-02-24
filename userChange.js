@@ -21,12 +21,12 @@ var client = new elasticsearch.Client({
 });
 
 // Instantiate a sentry client
-var sentryClient = new raven.Client('https://f4ab035568994293b9a2a90727ccb5fc:a6dc87433f284952b2b5d629422ef7e6@sentry.io/103134');
+var sentryClient = new raven.Client('https://c2b3c727812f4643b73f40bee09e5108:fed6658dfeb94757b53cb062e81cdc68@sentry.io/103136');
 sentryClient.patchGlobal();
 
 // Initialize Google Cloud
-var topicName = 'process-list-change';
-var subscriptionName = 'node-list-change';
+var topicName = 'process-user-change';
+var subscriptionName = 'node-user-change';
 var pubsub = gcloud.pubsub();
 
 // Get a Google Cloud topic
@@ -47,59 +47,51 @@ function getTopic(currentTopicName, cb) {
  * @param {string} requestData.Id Datastore ID string.
  * @returns {Object} Datastore key object.
  */
-function getKeysFromRequestData(requestData, resouceType) {
+function getKeyFromRequestData(requestData) {
     if (!requestData.Id) {
-        throw new Error("Id not provided. Make sure you have a 'Id' property " +
-            "in your request");
+        throw new Error('Id not provided. Make sure you have a "Id" property ' +
+            'in your request');
     }
 
-    var ids = requestData.Id.split(',');
-    var keys = [];
-
-    for (var i = ids.length - 1; i >= 0; i--) {
-        var listId = parseInt(ids[i], 10);
-        var datastoreId = datastore.key([resouceType, listId]);
-        keys.push(datastoreId);
-    }
-
-    return keys;
+    var userId = parseInt(requestData.Id, 10);
+    return datastore.key(['User', userId]);
 }
 
 /**
  * Retrieves a record.
  *
  * @example
- * gcloud alpha functions call ds-get --data '{'kind':'gcf-test','key':'foobar'}'
+ * gcloud alpha functions call ds-get --data '{"kind":"gcf-test","key":"foobar"}'
  *
  * @param {Object} context Cloud Function context.
  * @param {Function} context.success Success callback.
  * @param {Function} context.failure Failure callback.
  * @param {Object} data Request data, in this case an object provided by the user.
- * @param {string} data.kind The Datastore kind of the data to retrieve, e.g. 'user'.
+ * @param {string} data.kind The Datastore kind of the data to retrieve, e.g. "user".
  * @param {string} data.key Key at which to retrieve the data, e.g. 5075192766267392.
  */
-function getDatastore(data, resouceType) {
+function getDatastore(data) {
     var deferred = Q.defer();
     try {
-        var keys = getKeysFromRequestData(data, resouceType);
+        var key = getKeyFromRequestData(data);
 
-        datastore.get(keys, function(err, entities) {
+        datastore.get(key, function(err, entity) {
             if (err) {
                 console.error(err);
                 sentryClient.captureMessage(err);
                 deferred.reject(new Error(err));
             }
 
-            // The get operation will not fail for a non-existent entities, it just
+            // The get operation will not fail for a non-existent entity, it just
             // returns null.
-            if (!entities) {
+            if (!entity) {
                 var error = 'Entity does not exist';
                 console.error(error);
                 sentryClient.captureMessage(error);
                 deferred.reject(new Error(error));
             }
 
-            deferred.resolve(entities);
+            deferred.resolve(entity);
         });
 
     } catch (err) {
@@ -112,54 +104,40 @@ function getDatastore(data, resouceType) {
 }
 
 /**
- * Format a list for ES sync
+ * Format a user for ES sync
  *
- * @param {Object} listData List details from datastore.
+ * @param {Object} userData User details from datastore.
  */
-function formatESList(listId, listData) {
-    listData['Id'] = listId;
-
-    delete listData['FieldsMap.Value']
-    delete listData['Contacts']
-    delete listData['FieldsMap.Name']
-    delete listData['FieldsMap.CustomField']
-    delete listData['FieldsMap.Hidden']
-    delete listData['fieldsmap.Value']
-    delete listData['fieldsmap.Name']
-    delete listData['fieldsmap.CustomField']
-    delete listData['fieldsmap.Hidden']
-
-    return listData;
+function formatESUser(userId, userData) {
+    userData['Id'] = userId;
+    delete userData['Password'];
+    return userData;
 }
 
 /**
- * Add a list to ES
+ * Add a user to ES
  *
- * @param {Object} listData List details from datastore.
+ * @param {Object} userData User details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(lists) {
+function addToElastic(userId, userData) {
     var deferred = Q.defer();
+
     var esActions = [];
+    var postUserData = formatESUser(userId, userData);
 
-    for (var i = lists.length - 1; i >= 0; i--) {
-        var listId = lists[i].key.id;
-        var listData = lists[i].data;
-        var postListData = formatESList(listId, listData);
-
-        var indexRecord = {
-            index: {
-                _index: 'lists',
-                _type: 'list',
-                _id: listId
-            }
-        };
-        var dataRecord = postListData;
-        esActions.push(indexRecord);
-        esActions.push({
-            data: dataRecord
-        });
-    }
+    var indexRecord = {
+        index: {
+            _index: 'users',
+            _type: 'user',
+            _id: userId
+        }
+    };
+    var dataRecord = postUserData;
+    esActions.push(indexRecord);
+    esActions.push({
+        data: dataRecord
+    });
 
     client.bulk({
         body: esActions
@@ -175,14 +153,17 @@ function addToElastic(lists) {
 }
 
 /**
- * Syncs a list information to elasticsearch.
+ * Syncs a user information to elasticsearch.
  *
- * @param {Object} Get list details from datastore.
+ * @param {Object} user User details from datastore.
  */
-function getAndSyncElastic(lists) {
+function getAndSyncElastic(user) {
     var deferred = Q.defer();
 
-    addToElastic(lists).then(function(status) {
+    var userData = user.data;
+    var userId = user.key.id;
+
+    addToElastic(userId, userData).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -193,42 +174,35 @@ function getAndSyncElastic(lists) {
     return deferred.promise;
 }
 
-function syncList(data) {
+function syncUser(data) {
     var deferred = Q.defer();
-    if (data.Method && data.Method.toLowerCase() === 'create') {
-        getDatastore(data, 'MediaList').then(function(lists) {
-            if (lists != null) {
-                getAndSyncElastic(lists).then(function(elasticResponse) {
-                    if (elasticResponse) {
-                        deferred.resolve('Success!');
-                    } else {
-                        var error = 'Elastic sync failed';
-                        sentryClient.captureMessage(error);
-                        deferred.reject(new Error(error));
-                        throw new Error(error);
-                    }
-                });
-            } else {
-                var error = 'List not found';
-                sentryClient.captureMessage(error);
-                deferred.reject(new Error(error));
-                throw new Error(error);
-            }
-        }, function(error) {
+
+    getDatastore(data).then(function(user) {
+        if (user != null) {
+            getAndSyncElastic(user).then(function(elasticResponse) {
+                if (elasticResponse) {
+                    deferred.resolve(true);
+                } else {
+                    var error = 'Elastic sync failed';
+                    sentryClient.captureMessage(error);
+                    deferred.reject(new Error(error));
+                    throw new Error(error);
+                }
+            });
+        } else {
+            var error = 'Elastic sync failed';
             sentryClient.captureMessage(error);
             deferred.reject(new Error(error));
             throw new Error(error);
-        });
-    } else {
-        // This case should never happen unless wrong pub/sub method is called.
-        var error = 'Can not parse method ' + data.Method;
+        }
+    }, function(error) {
         sentryClient.captureMessage(error);
         deferred.reject(new Error(error));
         throw new Error(error);
-    }
+    });
 
     return deferred.promise;
-}
+};
 
 // Subscribe to Pub/Sub for this particular topic
 function subscribe(cb) {
@@ -287,10 +261,10 @@ subscribe(function(err, message) {
         console.error(err);
         throw err;
     }
-    console.log('Received request to process list process ' + message.data.Id);
-    syncList(message.data)
+    console.log('Received request to process user ' + message.data.Id);
+    syncUser(message.data)
         .then(function(status) {
-            rp('https://hchk.io/817c04d9-2042-4de8-ae3b-f24207df3dac')
+            rp('https://hchk.io/d4048067-fb6e-4b2f-8507-01cce6bfd20a')
                 .then(function(htmlString) {
                     console.log('Completed execution for ' + message.data.Id);
                 })
@@ -303,4 +277,4 @@ subscribe(function(err, message) {
         });
 });
 
-// testSync({Id: '5097453078446080', Method: 'create'})
+// testSync({Id: '5036688686448640'});
