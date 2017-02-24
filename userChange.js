@@ -111,6 +111,11 @@ function getDatastore(data) {
 function formatESUser(userId, userData) {
     userData['Id'] = userId;
     delete userData['Password'];
+    delete userData['AccessToken'];
+    delete userData['GoogleCode'];
+    delete userData['InstagramAuthKey'];
+    delete userData['RefreshToken'];
+    delete userData['SMTPPassword'];
     return userData;
 }
 
