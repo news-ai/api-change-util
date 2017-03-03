@@ -47,7 +47,7 @@ function getTopic(currentTopicName, cb) {
  * @param {string} requestData.Id Datastore ID string.
  * @returns {Object} Datastore key object.
  */
-function getKeysFromRequestData(requestData) {
+function getKeysFromRequestData(requestData, resouceType) {
     if (!requestData.Id) {
         throw new Error('Id not provided. Make sure you have a "Id" property ' +
             'in your request');
@@ -58,7 +58,7 @@ function getKeysFromRequestData(requestData) {
 
     for (var i = ids.length - 1; i >= 0; i--) {
         var emailId = parseInt(ids[i], 10);
-        var datastoreId = datastore.key([requestData, emailId]);
+        var datastoreId = datastore.key([resouceType, emailId]);
         keys.push(datastoreId);
     }
 
