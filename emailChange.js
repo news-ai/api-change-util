@@ -58,7 +58,7 @@ function getKeysFromRequestData(requestData) {
 
     for (var i = ids.length - 1; i >= 0; i--) {
         var emailId = parseInt(ids[i], 10);
-        var datastoreId = datastore.key(['Email', emailId]);
+        var datastoreId = datastore.key([requestData, emailId]);
         keys.push(datastoreId);
     }
 
@@ -78,7 +78,7 @@ function getKeysFromRequestData(requestData) {
  * @param {string} data.kind The Datastore kind of the data to retrieve, e.g. "user".
  * @param {string} data.key Key at which to retrieve the data, e.g. 5075192766267392.
  */
-function getDatastore(data) {
+function getDatastore(data, resouceType) {
     var deferred = Q.defer();
     try {
         var keys = getKeysFromRequestData(data, resouceType);
@@ -185,7 +185,7 @@ function getAndSyncElastic(emails) {
 function syncEmails(data) {
     var deferred = Q.defer();
 
-    getDatastore(data).then(function(emails) {
+    getDatastore(data, 'Email').then(function(emails) {
         if (emails != null) {
             getAndSyncElastic(emails).then(function(elasticResponse) {
                 if (elasticResponse) {
