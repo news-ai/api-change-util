@@ -53,8 +53,16 @@ function getKeyFromRequestData(requestData) {
             'in your request');
     }
 
-    var emailId = parseInt(requestData.Id, 10);
-    return datastore.key(['Email', emailId]);
+    var ids = requestData.Id.split(',');
+    var keys = [];
+
+    for (var i = ids.length - 1; i >= 0; i--) {
+        var emailId = parseInt(ids[i], 10);
+        var datastoreId = datastore.key(['Email', emailId]);
+        keys.push(datastoreId);
+    }
+
+    return keys;
 }
 
 /**
@@ -73,25 +81,25 @@ function getKeyFromRequestData(requestData) {
 function getDatastore(data) {
     var deferred = Q.defer();
     try {
-        var key = getKeyFromRequestData(data);
+        var keys = getKeysFromRequestData(data, resouceType);
 
-        datastore.get(key, function(err, entity) {
+        datastore.get(keys, function(err, entities) {
             if (err) {
                 console.error(err);
                 sentryClient.captureMessage(err);
                 deferred.reject(new Error(err));
             }
 
-            // The get operation will not fail for a non-existent entity, it just
+            // The get operation will not fail for a non-existent entities, it just
             // returns null.
-            if (!entity) {
+            if (!entities) {
                 var error = 'Entity does not exist';
                 console.error(error);
                 sentryClient.captureMessage(error);
                 deferred.reject(new Error(error));
             }
 
-            deferred.resolve(entity);
+            deferred.resolve(entities);
         });
 
     } catch (err) {
@@ -119,24 +127,28 @@ function formatESEmail(emailId, emailData) {
  * @param {Object} userData User details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(emailId, emailData) {
+function addToElastic(emails) {
     var deferred = Q.defer();
-
     var esActions = [];
-    var postEmailData = formatESEmail(emailId, emailData);
 
-    var indexRecord = {
-        index: {
-            _index: 'emails',
-            _type: 'email',
-            _id: emailId
-        }
-    };
-    var dataRecord = postEmailData;
-    esActions.push(indexRecord);
-    esActions.push({
-        data: dataRecord
-    });
+    for (var i = emails.length - 1; i >= 0; i--) {
+        var emailData = emails[i].data;
+        var emailId = emails[i].key.id;
+        var postEmailData = formatESEmail(emailId, emailData);
+
+        var indexRecord = {
+            index: {
+                _index: 'emails',
+                _type: 'email',
+                _id: emailId
+            }
+        };
+        var dataRecord = postEmailData;
+        esActions.push(indexRecord);
+        esActions.push({
+            data: dataRecord
+        });
+    }
 
     client.bulk({
         body: esActions
@@ -156,13 +168,10 @@ function addToElastic(emailId, emailData) {
  *
  * @param {Object} email Email details from datastore.
  */
-function getAndSyncElastic(email) {
+function getAndSyncElastic(emails) {
     var deferred = Q.defer();
 
-    var emailData = email.data;
-    var emailId = email.key.id;
-
-    addToElastic(emailId, emailData).then(function(status) {
+    addToElastic(emails).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -173,12 +182,12 @@ function getAndSyncElastic(email) {
     return deferred.promise;
 }
 
-function syncUser(data) {
+function syncEmails(data) {
     var deferred = Q.defer();
 
-    getDatastore(data).then(function(email) {
-        if (email != null) {
-            getAndSyncElastic(email).then(function(elasticResponse) {
+    getDatastore(data).then(function(emails) {
+        if (emails != null) {
+            getAndSyncElastic(emails).then(function(elasticResponse) {
                 if (elasticResponse) {
                     deferred.resolve(true);
                 } else {
@@ -261,7 +270,7 @@ subscribe(function(err, message) {
         throw err;
     }
     console.log('Received request to process email ' + message.data.Id);
-    syncUser(message.data)
+    syncEmails(message.data)
         .then(function(status) {
             rp('https://hchk.io/998c5b7a-54fe-4e28-8f68-32cb0775ab46')
                 .then(function(htmlString) {

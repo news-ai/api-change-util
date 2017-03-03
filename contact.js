@@ -102,8 +102,6 @@ function getKeysFromRequestData(requestData, resouceType) {
     var ids = requestData.Id.split(',');
     var keys = [];
 
-    console.log(ids);
-
     for (var i = ids.length - 1; i >= 0; i--) {
         var contactId = parseInt(ids[i], 10);
         var datastoreId = datastore.key([resouceType, contactId]);
