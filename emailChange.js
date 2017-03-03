@@ -47,7 +47,7 @@ function getTopic(currentTopicName, cb) {
  * @param {string} requestData.Id Datastore ID string.
  * @returns {Object} Datastore key object.
  */
-function getKeyFromRequestData(requestData) {
+function getKeysFromRequestData(requestData) {
     if (!requestData.Id) {
         throw new Error('Id not provided. Make sure you have a "Id" property ' +
             'in your request');
