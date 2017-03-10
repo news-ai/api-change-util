@@ -15,6 +15,7 @@ var datastore = require('@google-cloud/datastore')({
 
 // Initialize Google Cloud
 var enhanceTopicName = 'process-enhance';
+var newTwitterTopicName = 'process-twitter-feed'
 var topicName = 'process-new-contact-upload';
 var subscriptionName = 'node-new-contact-upload';
 var pubsub = gcloud.pubsub();
@@ -80,6 +81,51 @@ function addContactEmailToPubSub(contactEmails) {
 
         // Execute contact sync
         var toExecute = addContactEmailsToPubSubTopicPublish(tempString);
+        allPromises.push(toExecute);
+    }
+
+    return Q.all(allPromises);
+}
+
+function addContactTwitterUsernameToPubSubTopicPublish(contactTwitterUsernames) {
+    var deferred = Q.defer();
+
+    getTopic(newTwitterTopicName, function(err, topic) {
+        if (err) {
+            deferred.reject(new Error(err));
+            console.error('Error occurred while getting pubsub topic', err);
+            sentryClient.captureMessage(err);
+        } else {
+            topic.publish({
+                data: {
+                    email: contactTwitterUsernames
+                }
+            }, function(err) {
+                if (err) {
+                    deferred.reject(new Error(err));
+                    console.error('Error occurred while queuing background task', err);
+                    sentryClient.captureMessage(err);
+                } else {
+                    deferred.resolve(true);
+                }
+            });
+        }
+    });
+
+    return deferred.promise;
+}
+
+function addTwitterUsernameToPubSub(contactTwitterUsernames) {
+    var allPromises = [];
+
+    var i, j, tempArray, chunk = 75;
+    for (i = 0, j = contactTwitterUsernames.length; i < j; i += chunk) {
+        // Break array into a chunk
+        tempArray = contactTwitterUsernames.slice(i, i + chunk);
+        var tempString = tempArray.join(',');
+
+        // Execute contact sync
+        var toExecute = addContactTwitterUsernameToPubSubTopicPublish(tempString);
         allPromises.push(toExecute);
     }
 
@@ -236,13 +282,23 @@ function getAndSyncElastic(contacts) {
     addToElastic(contacts).then(function(status) {
         if (status) {
             var contactEmails = [];
+            var contactTwitterUsernames = [];
 
             for (var i = 0; i < contacts.length; i++) {
-                contactEmails.push(contacts[i].data.Email)
+                contactEmails.push(contacts[i].data.Email);
+
+                if (contacts[i].data.Twitter === '') {
+                    contactTwitterUsernames.push(contacts[i].data.Twitter);
+                }
             }
 
             addContactEmailToPubSub(contactEmails).then(function(status) {
-                deferred.resolve(true);
+                addTwitterUsernameToPubSub(contactTwitterUsernames).then(function(status) {
+                    deferred.resolve(true);
+                }, function (error) {
+                    sentryClient.captureMessage(error);
+                    deferred.reject(false);
+                });
             }, function (error) {
                 sentryClient.captureMessage(error);
                 deferred.reject(false);
