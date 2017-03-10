@@ -16,6 +16,7 @@ var datastore = require('@google-cloud/datastore')({
 // Initialize Google Cloud
 var enhanceTopicName = 'process-enhance';
 var newTwitterTopicName = 'process-twitter-feed'
+var newInstagramTopicName = 'process-instagram-feed';
 var topicName = 'process-new-contact-upload';
 var subscriptionName = 'node-new-contact-upload';
 var pubsub = gcloud.pubsub();
@@ -81,6 +82,51 @@ function addContactEmailToPubSub(contactEmails) {
 
         // Execute contact sync
         var toExecute = addContactEmailsToPubSubTopicPublish(tempString);
+        allPromises.push(toExecute);
+    }
+
+    return Q.all(allPromises);
+}
+
+function addContactInstagramUsernameToPubSubTopicPublish(contactInstagramUsernames) {
+    var deferred = Q.defer();
+
+    getTopic(newInstagramTopicName, function(err, topic) {
+        if (err) {
+            deferred.reject(new Error(err));
+            console.error('Error occurred while getting pubsub topic', err);
+            sentryClient.captureMessage(err);
+        } else {
+            topic.publish({
+                data: {
+                    username: contactInstagramUsernames
+                }
+            }, function(err) {
+                if (err) {
+                    deferred.reject(new Error(err));
+                    console.error('Error occurred while queuing background task', err);
+                    sentryClient.captureMessage(err);
+                } else {
+                    deferred.resolve(true);
+                }
+            });
+        }
+    });
+
+    return deferred.promise;
+}
+
+function addInstagramUsernameToPubSub(contactInstagramUsernames) {
+    var allPromises = [];
+
+    var i, j, tempArray, chunk = 75;
+    for (i = 0, j = contactInstagramUsernames.length; i < j; i += chunk) {
+        // Break array into a chunk
+        tempArray = contactInstagramUsernames.slice(i, i + chunk);
+        var tempString = tempArray.join(',');
+
+        // Execute contact sync
+        var toExecute = addContactInstagramUsernameToPubSubTopicPublish(tempString);
         allPromises.push(toExecute);
     }
 
@@ -283,18 +329,28 @@ function getAndSyncElastic(contacts) {
         if (status) {
             var contactEmails = [];
             var contactTwitterUsernames = [];
+            var contactInstagramUsernames = [];
 
             for (var i = 0; i < contacts.length; i++) {
                 contactEmails.push(contacts[i].data.Email);
 
-                if (contacts[i].data.Twitter === '') {
+                if (contacts[i].data.Twitter !== '') {
                     contactTwitterUsernames.push(contacts[i].data.Twitter);
+                }
+
+                if (contacts[i].data.Instagram !== '') {
+                    contactInstagramUsernames.push(contacts[i].data.Instagram);
                 }
             }
 
             addContactEmailToPubSub(contactEmails).then(function(status) {
                 addTwitterUsernameToPubSub(contactTwitterUsernames).then(function(status) {
-                    deferred.resolve(true);
+                    addInstagramUsernameToPubSub(contactInstagramUsernames).then(function(status) {
+                        deferred.resolve(true);
+                    }, function (error) {
+                        sentryClient.captureMessage(error);
+                        deferred.reject(false);
+                    });
                 }, function (error) {
                     sentryClient.captureMessage(error);
                     deferred.reject(false);
