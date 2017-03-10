@@ -98,7 +98,7 @@ function addContactTwitterUsernameToPubSubTopicPublish(contactTwitterUsernames) 
         } else {
             topic.publish({
                 data: {
-                    email: contactTwitterUsernames
+                    username: contactTwitterUsernames
                 }
             }, function(err) {
                 if (err) {
