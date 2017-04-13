@@ -4,6 +4,7 @@ var raven = require('raven');
 var rp = require('request-promise');
 var elasticsearch = require('elasticsearch');
 var Q = require('q');
+var moment = require('moment');
 var gcloud = require('google-cloud')({
     projectId: 'newsai-1166'
 });
@@ -127,7 +128,7 @@ function formatESEmail(emailId, emailData) {
  * @param {Object} userData User details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(emails) {
+function addToElastic(emails, campaigns) {
     var deferred = Q.defer();
     var esActions = [];
 
@@ -150,10 +151,30 @@ function addToElastic(emails) {
         });
     }
 
+    for (var i = campaigns.length - 1; i >= 0; i--) {
+        var campaignId = campaigns[i]._id;
+        delete campaigns[i]._id;
+
+        var indexRecord = {
+            index: {
+                _index: 'emails',
+                _type: 'campaign1',
+                _id: campaignId
+            }
+        };
+
+        var dataRecord = campaigns[i];
+        esActions.push(indexRecord);
+        esActions.push({
+            data: dataRecord
+        });
+    }
+
     client.bulk({
         body: esActions
     }, function(error, response) {
         if (error) {
+            console.error(error);
             sentryClient.captureMessage(error);
             deferred.reject(false);
         }
@@ -163,6 +184,34 @@ function addToElastic(emails) {
     return deferred.promise;
 }
 
+function isNumber(text) {
+    var reg = /^\d+$/;
+    if (text) {
+        return reg.test(text);
+    }
+    return false;
+}
+
+function removeSpecial(text) {
+    if (text) {
+        var lower = text.toLowerCase();
+        var upper = text.toUpperCase();
+        var result = '';
+        for (var i = 0; i < lower.length; ++i) {
+            if (isNumber(text[i]) || (lower[i] != upper[i]) || (lower[i].trim() === '')) {
+                result += text[i];
+            }
+        }
+        return result;
+    }
+    return '';
+}
+
+String.prototype.replaceAll = function(search, replacement) {
+    var target = this;
+    return target.replace(new RegExp(search, 'g'), replacement);
+};
+
 /**
  * Syncs a email information to elasticsearch.
  *
@@ -171,7 +220,30 @@ function addToElastic(emails) {
 function getAndSyncElastic(emails) {
     var deferred = Q.defer();
 
-    addToElastic(emails).then(function(status) {
+    var campaigns = [];
+    for (var i = 0; i < emails.length; i++) {
+        var createdDate = moment(emails[i].data.Created);
+        var indexId = ''
+
+        var campaign = {
+            'Subject': emails[i].data.Subject || '',
+            'Date': createdDate.format("YYYY-MM-DD"),
+            'UserId': emails[i].data.CreatedBy.toString()
+        };
+
+        var campaignName = removeSpecial(emails[i].data.Subject);
+        campaignName = campaignName.trim();
+        campaignName = campaignName.replaceAll(' ', '-');
+        campaignName = campaignName.toLowerCase();
+
+        var campaignId = emails[i].data.CreatedBy.toString() + '-' + createdDate.format("YYYY-MM-DD") + '-' + campaignName;
+
+        campaign._id = campaignId;
+
+        campaigns.push(campaign);
+    }
+
+    addToElastic(emails, campaigns).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -285,4 +357,6 @@ subscribe(function(err, message) {
         });
 });
 
-// testSync({Id: '5036688686448640'});
+// syncEmails({
+//     Id: '5291321359073280'
+// });
