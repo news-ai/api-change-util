@@ -223,15 +223,21 @@ function getAndSyncElastic(emails) {
     var campaigns = [];
     for (var i = 0; i < emails.length; i++) {
         var createdDate = moment(emails[i].data.Created);
-        var indexId = ''
+
+        // Take baseSubject into account as well
+        var emailSubject = emails[i].data.BaseSubject || emails[i].data.Subject || '';
 
         var campaign = {
-            'Subject': emails[i].data.Subject || '',
+            'Subject': emailSubject || '',
             'Date': createdDate.format("YYYY-MM-DD"),
             'UserId': emails[i].data.CreatedBy.toString()
         };
 
-        var campaignName = removeSpecial(emails[i].data.Subject);
+        if (emails[i].data.BaseSubject !== '') {
+            campaign['BaseSubject'] = emails[i].data.BaseSubject;
+        }
+
+        var campaignName = removeSpecial(emailSubject);
         campaignName = campaignName.trim();
         campaignName = campaignName.replaceAll(' ', '-');
         campaignName = campaignName.toLowerCase();
