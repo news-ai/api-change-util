@@ -138,28 +138,8 @@ function formatESList(listId, listData) {
  * @param {Object} listData List details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(lists) {
+function syncElastic(esActions) {
     var deferred = Q.defer();
-    var esActions = [];
-
-    for (var i = lists.length - 1; i >= 0; i--) {
-        var listId = lists[i].key.id;
-        var listData = lists[i].data;
-        var postListData = formatESList(listId, listData);
-
-        var indexRecord = {
-            index: {
-                _index: 'lists',
-                _type: 'list',
-                _id: listId
-            }
-        };
-        var dataRecord = postListData;
-        esActions.push(indexRecord);
-        esActions.push({
-            data: dataRecord
-        });
-    }
 
     client.bulk({
         body: esActions
@@ -179,10 +159,46 @@ function addToElastic(lists) {
  *
  * @param {Object} Get list details from datastore.
  */
-function getAndSyncElastic(lists) {
+function getAndSyncElastic(lists, action) {
     var deferred = Q.defer();
+    var esActions = [];
 
-    addToElastic(lists).then(function(status) {
+    if (action === 'create') {
+        for (var i = lists.length - 1; i >= 0; i--) {
+            var listId = lists[i].key.id;
+            var listData = lists[i].data;
+            var postListData = formatESList(listId, listData);
+
+            var indexRecord = {
+                index: {
+                    _index: 'lists',
+                    _type: 'list',
+                    _id: listId
+                }
+            };
+            var dataRecord = postListData;
+            esActions.push(indexRecord);
+            esActions.push({
+                data: dataRecord
+            });
+        }
+    } else if (action === 'delete') {
+        for (var i = lists.length - 1; i >= 0; i--) {
+            var listId = lists[i].key.id;
+
+            var deleteRecord = {
+                delete: {
+                    _index: 'lists',
+                    _type: 'list',
+                    _id: listId
+                }
+            };
+
+            esActions.push(deleteRecord);
+        }
+    }
+
+    syncElastic(esActions).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -195,10 +211,10 @@ function getAndSyncElastic(lists) {
 
 function syncList(data) {
     var deferred = Q.defer();
-    if (data.Method && data.Method.toLowerCase() === 'create') {
+    if (data.Method && data.Method.toLowerCase() === 'create' || data.Method && data.Method.toLowerCase() === 'delete') {
         getDatastore(data, 'MediaList').then(function(lists) {
             if (lists != null) {
-                getAndSyncElastic(lists).then(function(elasticResponse) {
+                getAndSyncElastic(lists, data.Method.toLowerCase()).then(function(elasticResponse) {
                     if (elasticResponse) {
                         deferred.resolve('Success!');
                     } else {
