@@ -139,7 +139,7 @@ function addToElastic(emails, campaigns) {
 
         var indexRecord = {
             index: {
-                _index: 'emails1',
+                _index: 'emails2',
                 _type: 'email',
                 _id: emailId
             }
