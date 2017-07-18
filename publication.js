@@ -123,7 +123,7 @@ function addToElastic(publications) {
     for (var i = 0; i < publications.length; i++) {
         var publicationId = publications[i].key.id;
         var publicationData = publications[i].data;
-        
+
         var postPublicationData = formatESPublication(publicationId, publicationData);
 
         var indexRecord = {

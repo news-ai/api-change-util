@@ -347,15 +347,15 @@ function getAndSyncElastic(contacts) {
                 addTwitterUsernameToPubSub(contactTwitterUsernames).then(function(status) {
                     addInstagramUsernameToPubSub(contactInstagramUsernames).then(function(status) {
                         deferred.resolve(true);
-                    }, function (error) {
+                    }, function(error) {
                         sentryClient.captureMessage(error);
                         deferred.reject(false);
                     });
-                }, function (error) {
+                }, function(error) {
                     sentryClient.captureMessage(error);
                     deferred.reject(false);
                 });
-            }, function (error) {
+            }, function(error) {
                 sentryClient.captureMessage(error);
                 deferred.reject(false);
             });
