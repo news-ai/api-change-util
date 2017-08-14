@@ -47,7 +47,7 @@ function getTopic(currentTopicName, cb) {
  * @param {string} requestData.Id Datastore ID string.
  * @returns {Object} Datastore key object.
  */
-function getKeysFromRequestData(requestData) {
+function getKeysFromRequestData(requestData, resouceType) {
     if (!requestData.Id) {
         throw new Error('Id not provided. Make sure you have a "Id" property ' +
             'in your request');
@@ -78,10 +78,10 @@ function getKeysFromRequestData(requestData) {
  * @param {string} data.kind The Datastore kind of the data to retrieve, e.g. "user".
  * @param {string} data.key Key at which to retrieve the data, e.g. 5075192766267392.
  */
-function getDatastore(data) {
+function getDatastore(data, resouceType) {
     var deferred = Q.defer();
     try {
-        var keys = getKeysFromRequestData(data);
+        var keys = getKeysFromRequestData(data, resouceType);
 
         datastore.get(keys, function(err, entities) {
             if (err) {
@@ -190,7 +190,7 @@ function getAndSyncElastic(users) {
 function syncUser(data) {
     var deferred = Q.defer();
 
-    getDatastore(data).then(function(users) {
+    getDatastore(data, 'User').then(function(users) {
         if (users != null) {
             getAndSyncElastic(users).then(function(elasticResponse) {
                 if (elasticResponse) {
@@ -290,4 +290,4 @@ subscribe(function(err, message) {
         });
 });
 
-// testSync({Id: '5036688686448640'});
+// syncUser({Id: '4648439698685952'});
