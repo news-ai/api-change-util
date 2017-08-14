@@ -93,7 +93,7 @@ function getDatastore(data, resouceType) {
             // The get operation will not fail for a non-existent entities, it just
             // returns null.
             if (!entities) {
-                var error = 'Entity does not exist';
+                var error = 'Entity do not exist';
                 console.error(error);
                 sentryClient.captureMessage(error);
                 deferred.reject(new Error(error));

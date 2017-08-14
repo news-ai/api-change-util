@@ -47,14 +47,22 @@ function getTopic(currentTopicName, cb) {
  * @param {string} requestData.Id Datastore ID string.
  * @returns {Object} Datastore key object.
  */
-function getKeyFromRequestData(requestData) {
+function getKeysFromRequestData(requestData) {
     if (!requestData.Id) {
         throw new Error('Id not provided. Make sure you have a "Id" property ' +
             'in your request');
     }
 
-    var userId = parseInt(requestData.Id, 10);
-    return datastore.key(['User', userId]);
+    var ids = requestData.Id.split(',');
+    var keys = [];
+
+    for (var i = ids.length - 1; i >= 0; i--) {
+        var listId = parseInt(ids[i], 10);
+        var datastoreId = datastore.key([resouceType, listId]);
+        keys.push(datastoreId);
+    }
+
+    return keys;
 }
 
 /**
@@ -73,25 +81,25 @@ function getKeyFromRequestData(requestData) {
 function getDatastore(data) {
     var deferred = Q.defer();
     try {
-        var key = getKeyFromRequestData(data);
+        var keys = getKeysFromRequestData(data);
 
-        datastore.get(key, function(err, entity) {
+        datastore.get(keys, function(err, entities) {
             if (err) {
                 console.error(err);
                 sentryClient.captureMessage(err);
                 deferred.reject(new Error(err));
             }
 
-            // The get operation will not fail for a non-existent entity, it just
+            // The get operation will not fail for a non-existent entities, it just
             // returns null.
-            if (!entity) {
-                var error = 'Entity does not exist';
+            if (!entities) {
+                var error = 'Entities do not exist';
                 console.error(error);
                 sentryClient.captureMessage(error);
                 deferred.reject(new Error(error));
             }
 
-            deferred.resolve(entity);
+            deferred.resolve(entities);
         });
 
     } catch (err) {
@@ -125,50 +133,50 @@ function formatESUser(userId, userData) {
  * @param {Object} userData User details from datastore.
  * Returns true if adding data works and false if not.
  */
-function addToElastic(userId, userData) {
-    var deferred = Q.defer();
+ function syncElastic(esActions) {
+     var deferred = Q.defer();
 
-    var esActions = [];
-    var postUserData = formatESUser(userId, userData);
+     client.bulk({
+         body: esActions
+     }, function(error, response) {
+         if (error) {
+             sentryClient.captureMessage(error);
+             deferred.reject(false);
+         }
+         deferred.resolve(true);
+     });
 
-    var indexRecord = {
-        index: {
-            _index: 'users',
-            _type: 'user',
-            _id: userId
-        }
-    };
-    var dataRecord = postUserData;
-    esActions.push(indexRecord);
-    esActions.push({
-        data: dataRecord
-    });
-
-    client.bulk({
-        body: esActions
-    }, function(error, response) {
-        if (error) {
-            sentryClient.captureMessage(error);
-            deferred.reject(false);
-        }
-        deferred.resolve(true);
-    });
-
-    return deferred.promise;
-}
+     return deferred.promise;
+ }
 
 /**
  * Syncs a user information to elasticsearch.
  *
  * @param {Object} user User details from datastore.
  */
-function getAndSyncElastic(user) {
+function getAndSyncElastic(users) {
     var deferred = Q.defer();
 
-    var userData = user.data;
-    var userId = user.key.id;
+    var esActions = [];
 
-    addToElastic(userId, userData).then(function(status) {
+    for (var i = users.length - 1; i >= 0; i--) {
+        var postUserData = formatESUser(users[i].key.id, users[i].data);
+
+        var indexRecord = {
+            index: {
+                _index: 'users',
+                _type: 'user',
+                _id: users[i].key.id
+            }
+        };
+        var dataRecord = postUserData;
+        esActions.push(indexRecord);
+        esActions.push({
+            data: dataRecord
+        });
+    }
+
+    syncElastic(esActions).then(function(status) {
         if (status) {
             deferred.resolve(true);
         } else {
@@ -182,9 +190,9 @@ function getAndSyncElastic(user) {
 function syncUser(data) {
     var deferred = Q.defer();
 
-    getDatastore(data).then(function(user) {
-        if (user != null) {
-            getAndSyncElastic(user).then(function(elasticResponse) {
+    getDatastore(data).then(function(users) {
+        if (users != null) {
+            getAndSyncElastic(users).then(function(elasticResponse) {
                 if (elasticResponse) {
                     deferred.resolve(true);
                 } else {
