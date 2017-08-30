@@ -447,18 +447,6 @@ function syncContact(data) {
     return deferred.promise;
 }
 
-// Get a Google Cloud topic
-function getTopic(currentTopicName, cb) {
-    pubsub.createTopic(currentTopicName, function(err, topic) {
-        // topic already exists.
-        if (err && err.code === 409) {
-            return cb(null, pubsub.topic(currentTopicName));
-        }
-        return cb(err, topic);
-    });
-}
-
-
 // Subscribe to Pub/Sub for this particular topic
 function subscribe(cb) {
     var subscription;
