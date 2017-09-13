@@ -38,6 +38,7 @@ sentryClient.patchGlobal();
  */
 function getKeyFromRequestData(requestData) {
     if (!requestData.Id) {
+        console.log(requestData);
         throw new Error('Id not provided. Make sure you have a "Id" property ' +
             'in your request');
     }
@@ -175,9 +176,9 @@ function getAndSyncElastic(publications) {
 function syncPublication(data) {
     var deferred = Q.defer();
 
-    getDatastore(data).then(function(publication) {
-        if (publication != null) {
-            getAndSyncElastic(publication).then(function(elasticResponse) {
+    getDatastore(data).then(function(publications) {
+        if (publications != null) {
+            getAndSyncElastic(publications).then(function(elasticResponse) {
                 if (elasticResponse) {
                     deferred.resolve(true);
                 } else {
