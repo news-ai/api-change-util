@@ -99,11 +99,18 @@ function addPublicationIdToPubSubTopicPublish(publicationIds) {
 function addContactIdToPubSub(contactIds) {
     var allPromises = [];
     var contactIdsArray = contactIds.split(",");
+    var filteredContactIds = [];
+
+    for (var i = 0; i < contactIdsArray.length; i++) {
+        if (contactIdsArray[i] !== 0) {
+            filteredContactIds.push(contactIdsArray[i]);
+        }
+    }
 
     var i, j, tempArray, chunk = 75;
-    for (i = 0, j = contactIdsArray.length; i < j; i += chunk) {
+    for (i = 0, j = filteredContactIds.length; i < j; i += chunk) {
         // Break array into a chunk
-        tempArray = contactIdsArray.slice(i, i + chunk);
+        tempArray = filteredContactIds.slice(i, i + chunk);
         var tempString = tempArray.join(',');
 
         // Execute contact sync
@@ -117,11 +124,18 @@ function addContactIdToPubSub(contactIds) {
 function addPublicationIdToPubSub(publicationIds) {
     var allPromises = [];
     var publicationIdsArray = publicationIds.split(",");
+    var filteredPublicationIds = [];
+
+    for (var i = 0; i < publicationIdsArray.length; i++) {
+        if (publicationIdsArray[i] !== 0) {
+            filteredPublicationIds.push(publicationIdsArray[i]);
+        }
+    }
 
     var i, j, tempArray, chunk = 75;
-    for (i = 0, j = publicationIdsArray.length; i < j; i += chunk) {
+    for (i = 0, j = filteredPublicationIds.length; i < j; i += chunk) {
         // Break array into a chunk
-        tempArray = publicationIdsArray.slice(i, i + chunk);
+        tempArray = filteredPublicationIds.slice(i, i + chunk);
         var tempString = tempArray.join(',');
 
         // Execute contact sync

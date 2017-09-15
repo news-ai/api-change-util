@@ -91,7 +91,6 @@ function getDatastore(data) {
 
             deferred.resolve(entity);
         });
-
     } catch (err) {
         console.error(err);
         sentryClient.captureMessage(err);
@@ -287,22 +286,3 @@ subscribe(function(err, message) {
             console.error(error);
         });
 });
-
-/**
- * Triggered from a message on a Pub/Sub topic.
- *
- * @param {Object} context Cloud Function context.
- * @param {Function} context.success Success callback.
- * @param {Function} context.failure Failure callback.
- * @param {Object} data Request data, in this case an object provided by the Pub/Sub trigger.
- * @param {Object} data.message Message that was published via Pub/Sub.
- */
-exports.syncPublications = function syncPublications(data) {
-    return syncPublication(data);
-};
-
-function testSync(data) {
-    return syncPublication(data);
-};
-
-// testSync({Id: '5852755692355584,5660158352949248', Method: 'create'})

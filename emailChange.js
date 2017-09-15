@@ -362,7 +362,3 @@ subscribe(function(err, message) {
             console.error(error);
         });
 });
-
-// syncEmails({
-//     Id: '5291321359073280'
-// });

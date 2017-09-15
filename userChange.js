@@ -289,5 +289,3 @@ subscribe(function(err, message) {
             console.error(error);
         });
 });
-
-// syncUser({Id: '4648439698685952'});

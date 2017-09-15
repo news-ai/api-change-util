@@ -317,5 +317,3 @@ subscribe(function(err, message) {
             console.error(error);
         });
 });
-
-// testSync({Id: '5097453078446080', Method: 'create'})

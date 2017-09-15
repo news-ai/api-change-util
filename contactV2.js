@@ -519,22 +519,3 @@ subscribe(function(err, message) {
             console.error(error);
         });
 });
-
-/**
- * Triggered from a message on a Pub/Sub topic.
- *
- * @param {Object} context Cloud Function context.
- * @param {Function} context.success Success callback.
- * @param {Function} context.failure Failure callback.
- * @param {Object} data Request data, in this case an object provided by the Pub/Sub trigger.
- * @param {Object} data.message Message that was published via Pub/Sub.
- */
-exports.syncContacts = function syncContacts(data) {
-    return syncContact(data);
-};
-
-function testSync(data) {
-    return syncContact(data);
-};
-
-// testSync({Id: '6095325244686336', Method: 'create'})
